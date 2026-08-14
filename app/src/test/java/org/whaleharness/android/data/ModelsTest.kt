@@ -52,4 +52,43 @@ class ModelsTest {
         assertTrue(result.contains("Main.kt"))
         assertTrue(result.contains("fun main() = Unit"))
     }
+
+    @Test
+    fun pairingCodeExtractsLocalBridgeAndToken() {
+        val config = RemoteHarnessConfig.fromPairingCode(
+            "http://192.168.1.20:3081/?token=pair%20token",
+        )
+        assertEquals("http://192.168.1.20:3081", config.baseUrl)
+        assertEquals("pair token", config.token)
+        assertEquals(
+            "http://192.168.1.20:3081/?token=pair+token",
+            config.entryUrl(),
+        )
+    }
+
+    @Test
+    fun pairingCodeAcceptsLocalHostnameAndTailscaleAddress() {
+        assertEquals(
+            "http://my-mac.local:3081",
+            RemoteHarnessConfig.fromPairingCode("http://my-mac.local:3081/?token=test").baseUrl,
+        )
+        assertEquals(
+            "http://100.64.1.8:3081",
+            RemoteHarnessConfig.fromPairingCode("http://100.64.1.8:3081/?token=test").baseUrl,
+        )
+    }
+
+    @Test
+    fun pairingCodeRejectsPublicCleartextAddress() {
+        assertThrows(IllegalArgumentException::class.java) {
+            RemoteHarnessConfig.fromPairingCode("http://example.com:3081/?token=test")
+        }
+    }
+
+    @Test
+    fun pairingCodeRequiresToken() {
+        assertThrows(IllegalArgumentException::class.java) {
+            RemoteHarnessConfig.fromPairingCode("http://192.168.1.20:3081/")
+        }
+    }
 }

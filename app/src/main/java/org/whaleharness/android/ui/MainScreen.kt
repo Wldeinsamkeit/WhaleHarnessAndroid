@@ -97,11 +97,18 @@ fun WhaleHarnessApp(viewModel: MainViewModel = viewModel()) {
                             Text("小鲸鱼", fontWeight = FontWeight.Bold)
                         }
                     } else {
-                        Text(if (state.tab == AppTab.SKILLS) "Skills" else "设置", fontWeight = FontWeight.Bold)
+                        Text(
+                            when (state.tab) {
+                                AppTab.SKILLS -> "Skills"
+                                AppTab.REMOTE -> "电脑 Harness"
+                                else -> "设置"
+                            },
+                            fontWeight = FontWeight.Bold,
+                        )
                     }
                 },
                 navigationIcon = {
-                    if (state.tab == AppTab.SKILLS) {
+                    if (state.tab == AppTab.SKILLS || state.tab == AppTab.REMOTE) {
                         TextButton(onClick = { viewModel.selectTab(AppTab.SETTINGS) }) { Text("‹ 设置") }
                     }
                 },
@@ -115,7 +122,7 @@ fun WhaleHarnessApp(viewModel: MainViewModel = viewModel()) {
             )
         },
         bottomBar = {
-            if (state.tab != AppTab.SKILLS) {
+            if (state.tab != AppTab.SKILLS && state.tab != AppTab.REMOTE) {
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                     TabItem(R.drawable.ic_chat, "小鲸鱼", AppTab.CHAT, state.tab, viewModel::selectTab)
                     TabItem(R.drawable.ic_settings, "设置", AppTab.SETTINGS, state.tab, viewModel::selectTab)
@@ -129,6 +136,7 @@ fun WhaleHarnessApp(viewModel: MainViewModel = viewModel()) {
                 AppTab.CHAT -> ChatScreen(state, viewModel)
                 AppTab.SKILLS -> SkillsScreen(state, viewModel)
                 AppTab.SETTINGS -> SettingsScreen(state, viewModel)
+                AppTab.REMOTE -> RemoteHarnessScreen(state, viewModel)
             }
         }
     }
@@ -449,6 +457,31 @@ private fun SettingsScreen(state: AppUiState, viewModel: MainViewModel) {
             }
         }
 
+        Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface) {
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { viewModel.selectTab(AppTab.REMOTE) }.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(
+                    modifier = Modifier.size(42.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    Box(contentAlignment = Alignment.Center) { Text("💻", fontSize = 20.sp) }
+                }
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text("电脑 Harness", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (state.remoteConfigured) "已配对 · ${state.remoteBaseUrl}" else "扫码直连 · 局域网控制",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                    )
+                }
+                Text("›", fontSize = 28.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+
         Spacer(Modifier.height(8.dp))
         Text("安全与本地", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface) {
@@ -457,11 +490,11 @@ private fun SettingsScreen(state: AppUiState, viewModel: MainViewModel) {
                 Text("只读取你明确选择的文件，最多 5 个，每个 200 KB。", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 HorizontalDivider(Modifier.padding(vertical = 12.dp))
                 Text("运行边界", fontWeight = FontWeight.SemiBold)
-                Text("当前不包含电脑桥接、Shell 或 Git。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("本地对话不执行 Shell 或 Git；连接电脑 Harness 后由电脑端按其权限规则执行。", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Text(
-            "小鲸鱼 Android 0.1.1 · MIT 开源试用版",
+            "小鲸鱼 Android 0.2.0 · MIT 开源试用版",
             modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,

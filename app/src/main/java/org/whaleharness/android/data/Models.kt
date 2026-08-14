@@ -1,6 +1,8 @@
 package org.whaleharness.android.data
 
 import java.net.URI
+import java.net.URLDecoder
+import java.net.URLEncoder
 import java.util.UUID
 
 data class ApiConfig(
@@ -8,6 +10,55 @@ data class ApiConfig(
     val model: String = "deepseek-chat",
     val apiKey: String = "",
 )
+
+data class RemoteHarnessConfig(
+    val baseUrl: String,
+    val token: String,
+) {
+    fun healthUrl(): String = "${baseUrl.trimEnd('/')}/__open_harness_mobile/health"
+
+    fun entryUrl(): String = "${baseUrl.trimEnd('/')}/?token=${URLEncoder.encode(token, Charsets.UTF_8.name())}"
+
+    companion object {
+        fun fromPairingCode(payload: String): RemoteHarnessConfig {
+            val uri = URI(payload.trim())
+            require(uri.scheme == "http" || uri.scheme == "https") { "二维码不是 HTTP/HTTPS 配对地址" }
+            require(!uri.host.isNullOrBlank() && uri.userInfo == null) { "这不是有效的小鲸鱼配对二维码" }
+            val token = uri.rawQuery.orEmpty().split('&')
+                .mapNotNull { item ->
+                    val parts = item.split('=', limit = 2)
+                    if (parts.firstOrNull() == "token") parts.getOrNull(1) else null
+                }
+                .firstOrNull()
+                ?.let { URLDecoder.decode(it, Charsets.UTF_8.name()) }
+                .orEmpty()
+            require(token.isNotBlank()) { "配对二维码缺少令牌" }
+            require(uri.scheme == "https" || isTrustedLocalHost(uri.host)) {
+                "HTTP 桥接器只允许局域网、.local 或 Tailscale 地址"
+            }
+            val base = URI(uri.scheme, null, uri.host, uri.port, null, null, null).toString()
+            return RemoteHarnessConfig(baseUrl = base, token = token)
+        }
+
+        fun fromManualEntry(baseUrl: String, token: String): RemoteHarnessConfig {
+            val separator = if (baseUrl.contains('?')) "&" else "?"
+            return fromPairingCode("${baseUrl.trim()}${separator}token=${URLEncoder.encode(token.trim(), Charsets.UTF_8.name())}")
+        }
+
+        private fun isTrustedLocalHost(host: String): Boolean {
+            val normalized = host.lowercase()
+            if (normalized == "localhost" || normalized.endsWith(".local")) return true
+            if (normalized.startsWith("fe80:") || normalized.startsWith("fc") || normalized.startsWith("fd")) return true
+            val parts = normalized.split('.').mapNotNull { it.toIntOrNull() }
+            if (parts.size != 4 || parts.any { it !in 0..255 }) return false
+            return parts[0] == 10 ||
+                (parts[0] == 172 && parts[1] in 16..31) ||
+                (parts[0] == 192 && parts[1] == 168) ||
+                (parts[0] == 100 && parts[1] in 64..127) ||
+                parts[0] == 127
+        }
+    }
+}
 
 data class Skill(
     val id: String = UUID.randomUUID().toString(),

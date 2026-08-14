@@ -16,12 +16,13 @@ import javax.crypto.spec.GCMParameterSpec
 
 class AppRepository(context: Context) {
     private val preferences = context.getSharedPreferences("whale_harness", Context.MODE_PRIVATE)
-    private val secretStore = ApiKeyStore()
+    private val apiKeyStore = EncryptedStringStore("whale_harness_api_key")
+    private val remoteTokenStore = EncryptedStringStore("whale_harness_remote_token")
 
     fun loadConfig(): ApiConfig = ApiConfig(
         baseUrl = preferences.getString("base_url", null) ?: "https://api.deepseek.com",
         model = preferences.getString("model", null) ?: "deepseek-chat",
-        apiKey = preferences.getString("api_key", null)?.let(secretStore::decrypt).orEmpty(),
+        apiKey = preferences.getString("api_key", null)?.let(apiKeyStore::decrypt).orEmpty(),
     )
 
     fun saveConfig(config: ApiConfig) {
@@ -31,8 +32,31 @@ class AppRepository(context: Context) {
         preferences.edit {
             putString("base_url", config.baseUrl.trim())
             putString("model", config.model.trim())
-            putString("api_key", secretStore.encrypt(config.apiKey.trim()))
+            putString("api_key", apiKeyStore.encrypt(config.apiKey.trim()))
         }
+    }
+
+    fun loadRemoteConfig(): RemoteHarnessConfig? {
+        val baseUrl = preferences.getString("remote_base_url", null).orEmpty()
+        val encryptedToken = preferences.getString("remote_token", null) ?: return null
+        val token = remoteTokenStore.decrypt(encryptedToken)
+        if (baseUrl.isBlank() || token.isBlank()) return null
+        return runCatching { RemoteHarnessConfig.fromManualEntry(baseUrl, token) }.getOrNull()
+    }
+
+    fun saveRemoteConfig(config: RemoteHarnessConfig) {
+        preferences.edit {
+            putString("remote_base_url", config.baseUrl)
+            putString("remote_token", remoteTokenStore.encrypt(config.token))
+        }
+    }
+
+    fun clearRemoteConfig() {
+        preferences.edit {
+            remove("remote_base_url")
+            remove("remote_token")
+        }
+        remoteTokenStore.clear()
     }
 
     fun loadSkills(): List<Skill> {
@@ -79,8 +103,7 @@ class AppRepository(context: Context) {
     )
 }
 
-private class ApiKeyStore {
-    private val alias = "whale_harness_api_key"
+private class EncryptedStringStore(private val alias: String) {
     private val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
 
     private fun key(): SecretKey {
@@ -117,4 +140,8 @@ private class ApiKeyStore {
         )
         String(cipher.doFinal(Base64.decode(encrypted, Base64.NO_WRAP)))
     }.getOrDefault("")
+
+    fun clear() {
+        if (keyStore.containsAlias(alias)) keyStore.deleteEntry(alias)
+    }
 }
