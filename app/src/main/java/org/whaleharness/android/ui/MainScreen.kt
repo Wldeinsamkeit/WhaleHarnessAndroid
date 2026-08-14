@@ -461,7 +461,7 @@ private fun SettingsScreen(state: AppUiState, viewModel: MainViewModel) {
             }
         }
         Text(
-            "小鲸鱼 Android 0.1.0 · MIT 开源试用版",
+            "小鲸鱼 Android 0.1.1 · MIT 开源试用版",
             modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,

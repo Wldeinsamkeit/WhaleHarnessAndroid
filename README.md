@@ -18,7 +18,7 @@
 
 ![扫码下载小鲸鱼 Android](download-qr.png)
 
-1. 把 `WhaleHarness-v0.1.0-debug.apk` 传到安卓手机。
+1. 下载 `WhaleHarness-v0.1.1-debug.apk`。
 2. 点击 APK；如果系统提示，允许当前文件管理器“安装未知应用”。
 3. 安装后打开“小鲸鱼”。
 4. 进入“设置”，填写自己的 API 地址、模型与 API Key，并点“测试连接”。
