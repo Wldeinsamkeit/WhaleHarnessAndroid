@@ -506,7 +506,7 @@ private fun SettingsScreen(state: AppUiState, viewModel: MainViewModel) {
         TextButton(
             onClick = { viewModel.selectTab(AppTab.REMOTE) },
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("手动输入电脑地址和令牌") }
+        ) { Text("手动输入电脑地址和配对码") }
 
         Spacer(Modifier.height(6.dp))
         Text("模型", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -609,7 +609,7 @@ private fun SettingsScreen(state: AppUiState, viewModel: MainViewModel) {
             }
         }
         Text(
-            "小鲸鱼 Android 0.2.1 · MIT 开源试用版",
+            "小鲸鱼 Android 0.3.0 · Harness 原生直连试用版",
             modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,

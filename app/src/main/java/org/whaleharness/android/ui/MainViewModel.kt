@@ -1,6 +1,7 @@
 package org.whaleharness.android.ui
 
 import android.app.Application
+import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -8,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.whaleharness.android.data.ApiClient
@@ -19,6 +21,8 @@ import org.whaleharness.android.data.PromptComposer
 import org.whaleharness.android.data.Role
 import org.whaleharness.android.data.RemoteHarnessClient
 import org.whaleharness.android.data.RemoteHarnessConfig
+import org.whaleharness.android.data.RemotePairingRequest
+import org.whaleharness.android.data.RemoteSession
 import org.whaleharness.android.data.Skill
 
 enum class AppTab { CHAT, SKILLS, SETTINGS, REMOTE }
@@ -32,11 +36,15 @@ data class AppUiState(
     val draft: String = "",
     val isBusy: Boolean = false,
     val remoteBaseUrl: String = "",
-    val remoteToken: String = "",
+    val remotePairCode: String = "",
     val remoteConfigured: Boolean = false,
     val remoteConnected: Boolean = false,
     val remoteBusy: Boolean = false,
     val remoteScanRequest: Int = 0,
+    val remoteSessions: List<RemoteSession> = emptyList(),
+    val remoteSessionId: String? = null,
+    val remoteMessages: List<ChatMessage> = emptyList(),
+    val remoteDraft: String = "",
     val notice: String? = null,
 )
 
@@ -61,7 +69,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun updateModel(value: String) = _state.update { it.copy(config = it.config.copy(model = value)) }
     fun updateApiKey(value: String) = _state.update { it.copy(config = it.config.copy(apiKey = value)) }
     fun updateRemoteBaseUrl(value: String) = _state.update { it.copy(remoteBaseUrl = value) }
-    fun updateRemoteToken(value: String) = _state.update { it.copy(remoteToken = value) }
+    fun updateRemotePairCode(value: String) = _state.update { it.copy(remotePairCode = value.filter(Char::isDigit).take(8)) }
+    fun updateRemoteDraft(value: String) = _state.update { it.copy(remoteDraft = value) }
     fun clearNotice() = _state.update { it.copy(notice = null) }
 
     fun openRemoteScanner() = _state.update {
@@ -71,35 +80,46 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun consumeRemoteScanRequest() = _state.update { it.copy(remoteScanRequest = 0) }
 
     fun pairRemote(payload: String) {
-        runCatching {
-            RemoteHarnessConfig.fromPairingCode(payload).also(repository::saveRemoteConfig)
-        }
-            .onSuccess { config ->
-                _state.update {
-                    it.copy(
-                        remoteBaseUrl = config.baseUrl,
-                        remoteToken = "",
-                        remoteConfigured = true,
-                        notice = "已读取电脑配对码，正在测试连接",
-                    )
-                }
-                testRemote()
-            }
+        runCatching { RemotePairingRequest.fromPayload(payload) }
+            .onSuccess(::pairAndConnect)
             .onFailure { error -> _state.update { it.copy(notice = error.message ?: "无法读取配对码") } }
     }
 
     fun saveAndTestRemote() {
         val snapshot = _state.value
-        val saved = repository.loadRemoteConfig()
-        val token = snapshot.remoteToken.ifBlank { saved?.token.orEmpty() }
-        runCatching {
-            RemoteHarnessConfig.fromManualEntry(snapshot.remoteBaseUrl, token).also(repository::saveRemoteConfig)
-        }
-            .onSuccess {
-                _state.update { state -> state.copy(remoteToken = "", remoteConfigured = true) }
-                testRemote()
-            }
+        runCatching { RemotePairingRequest.fromManualEntry(snapshot.remoteBaseUrl, snapshot.remotePairCode) }
+            .onSuccess(::pairAndConnect)
             .onFailure { error -> _state.update { it.copy(notice = error.message ?: "电脑连接配置无效") } }
+    }
+
+    private fun pairAndConnect(request: RemotePairingRequest) {
+        viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    remoteBaseUrl = request.baseUrl,
+                    remotePairCode = "",
+                    remoteBusy = true,
+                    remoteConnected = false,
+                    notice = "正在与电脑 Harness 配对",
+                )
+            }
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    remoteClient.pair(request, "${Build.MANUFACTURER} ${Build.MODEL}".trim()).also(remoteClient::test)
+                }
+            }.onSuccess { config ->
+                repository.saveRemoteConfig(config)
+                loadRemoteSessions(config, "配对成功，手机已直连电脑 Harness")
+            }.onFailure { error ->
+                _state.update {
+                    it.copy(
+                        remoteBusy = false,
+                        remoteConnected = false,
+                        notice = "无法配对电脑 Harness：${error.message ?: "请检查二维码和同一 Wi-Fi"}",
+                    )
+                }
+            }
+        }
     }
 
     fun testRemote() {
@@ -110,32 +130,141 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch {
             _state.update { it.copy(remoteBusy = true, remoteConnected = false) }
-            runCatching { withContext(Dispatchers.IO) { remoteClient.test(config) } }
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    remoteClient.test(config)
+                    remoteClient.listSessions(config)
+                }
+            }
                 .onSuccess {
-                    _state.update { it.copy(remoteBusy = false, remoteConnected = true, notice = "连接成功，电脑 Harness 已就绪") }
+                    _state.update { state ->
+                        state.copy(
+                            remoteBusy = false,
+                            remoteConnected = true,
+                            remoteSessions = it,
+                            notice = "连接成功，手机正在直接控制电脑 Harness",
+                        )
+                    }
                 }
                 .onFailure { error ->
                     _state.update {
                         it.copy(
                             remoteBusy = false,
                             remoteConnected = false,
-                            notice = "无法连接电脑桥接器：${error.message ?: "请检查同一 Wi-Fi 和电脑端状态"}",
+                            notice = "无法连接电脑 Harness：${error.message ?: "请检查同一 Wi-Fi 和电脑端状态"}",
                         )
                     }
                 }
         }
     }
 
-    fun remoteEntryUrl(): String? = repository.loadRemoteConfig()?.entryUrl()
+    private fun loadRemoteSessions(config: RemoteHarnessConfig, notice: String? = null) {
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { remoteClient.listSessions(config) } }
+                .onSuccess { sessions ->
+                    _state.update {
+                        it.copy(
+                            remoteBusy = false,
+                            remoteConfigured = true,
+                            remoteConnected = true,
+                            remoteSessions = sessions,
+                            notice = notice,
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _state.update { it.copy(remoteBusy = false, notice = error.message ?: "无法读取电脑会话") }
+                }
+        }
+    }
+
+    fun refreshRemoteSessions() {
+        val config = repository.loadRemoteConfig() ?: return
+        _state.update { it.copy(remoteBusy = true) }
+        loadRemoteSessions(config)
+    }
+
+    fun openRemoteSession(sessionId: String) {
+        val config = repository.loadRemoteConfig() ?: return
+        viewModelScope.launch {
+            _state.update { it.copy(remoteSessionId = sessionId, remoteMessages = emptyList(), remoteBusy = true) }
+            runCatching { withContext(Dispatchers.IO) { remoteClient.history(config, sessionId) } }
+                .onSuccess { messages -> _state.update { it.copy(remoteMessages = messages, remoteBusy = false) } }
+                .onFailure { error -> _state.update { it.copy(remoteBusy = false, notice = error.message ?: "无法读取会话") } }
+        }
+    }
+
+    fun closeRemoteSession() = _state.update { it.copy(remoteSessionId = null, remoteMessages = emptyList(), remoteDraft = "") }
+
+    fun createRemoteSession() {
+        val config = repository.loadRemoteConfig() ?: return
+        viewModelScope.launch {
+            _state.update { it.copy(remoteBusy = true) }
+            runCatching { withContext(Dispatchers.IO) { remoteClient.createSession(config) } }
+                .onSuccess(::openRemoteSession)
+                .onFailure { error -> _state.update { it.copy(remoteBusy = false, notice = error.message ?: "无法新建会话") } }
+        }
+    }
+
+    fun refreshRemoteHistory() {
+        val sessionId = _state.value.remoteSessionId ?: return
+        val config = repository.loadRemoteConfig() ?: return
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { remoteClient.history(config, sessionId) } }
+                .onSuccess { messages -> _state.update { it.copy(remoteMessages = messages, remoteBusy = false) } }
+                .onFailure { error -> _state.update { it.copy(remoteBusy = false, notice = error.message ?: "刷新失败") } }
+        }
+    }
+
+    fun sendRemote() {
+        val snapshot = _state.value
+        val sessionId = snapshot.remoteSessionId ?: return
+        val config = repository.loadRemoteConfig() ?: return
+        val text = snapshot.remoteDraft.trim()
+        if (text.isBlank() || snapshot.remoteBusy) return
+        _state.update {
+            it.copy(
+                remoteDraft = "",
+                remoteBusy = true,
+                remoteMessages = it.remoteMessages + ChatMessage(role = Role.USER, content = text),
+            )
+        }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { remoteClient.prompt(config, sessionId, text) } }
+                .onFailure { error ->
+                    _state.update { it.copy(remoteBusy = false, notice = error.message ?: "任务发送失败") }
+                    return@launch
+                }
+            repeat(30) {
+                delay(2_000)
+                val result = runCatching {
+                    withContext(Dispatchers.IO) {
+                        remoteClient.history(config, sessionId) to remoteClient.listSessions(config)
+                    }
+                }.getOrNull() ?: return@repeat
+                val running = result.second.firstOrNull { it.id == sessionId }?.running == true
+                _state.update {
+                    it.copy(remoteMessages = result.first, remoteSessions = result.second, remoteBusy = running)
+                }
+                if (!running) return@launch
+            }
+            _state.update { it.copy(remoteBusy = false, notice = "任务仍在电脑运行，可点刷新查看结果") }
+        }
+    }
 
     fun disconnectRemote() {
+        val config = repository.loadRemoteConfig()
         repository.clearRemoteConfig()
+        if (config != null) viewModelScope.launch(Dispatchers.IO) { runCatching { remoteClient.revoke(config) } }
         _state.update {
             it.copy(
                 remoteBaseUrl = "",
-                remoteToken = "",
+                remotePairCode = "",
                 remoteConfigured = false,
                 remoteConnected = false,
+                remoteSessions = emptyList(),
+                remoteSessionId = null,
+                remoteMessages = emptyList(),
                 notice = "已断开电脑 Harness",
             )
         }

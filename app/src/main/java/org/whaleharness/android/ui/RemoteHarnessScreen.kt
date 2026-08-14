@@ -1,13 +1,10 @@
 package org.whaleharness.android.ui
 
-import android.annotation.SuppressLint
-import android.webkit.CookieManager
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.core.net.toUri
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,12 +13,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -30,33 +32,34 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.google.zxing.client.android.Intents
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import org.whaleharness.android.R
+import org.whaleharness.android.data.ChatMessage
+import org.whaleharness.android.data.RemoteSession
+import org.whaleharness.android.data.Role
+import java.text.DateFormat
+import java.util.Date
 
 @Composable
 internal fun RemoteHarnessScreen(state: AppUiState, viewModel: MainViewModel) {
-    var showsComputer by remember { mutableStateOf(false) }
     val scanner = rememberLauncherForActivityResult(ScanContract()) { result ->
         result.contents?.let(viewModel::pairRemote)
     }
     val scanOptions = remember {
         ScanOptions()
             .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-            .setPrompt("对准电脑上的小鲸鱼配对码")
+            .setPrompt("扫描 DeepSeek Harness 显示的移动配对二维码")
             .setBeepEnabled(false)
             .setOrientationLocked(false)
             .addExtra(Intents.Scan.SCAN_TYPE, Intents.Scan.MIXED_SCAN)
@@ -68,182 +71,236 @@ internal fun RemoteHarnessScreen(state: AppUiState, viewModel: MainViewModel) {
             scanner.launch(scanOptions)
         }
     }
-    LaunchedEffect(state.remoteConnected) {
-        if (state.remoteConnected) showsComputer = true
+    LaunchedEffect(state.remoteConfigured) {
+        if (state.remoteConfigured && !state.remoteConnected && !state.remoteBusy) viewModel.testRemote()
     }
 
-    if (showsComputer) {
-        val entryUrl = viewModel.remoteEntryUrl()
-        BackHandler { showsComputer = false }
-        Column(Modifier.fillMaxSize()) {
-            Surface(color = MaterialTheme.colorScheme.surface) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TextButton(onClick = { showsComputer = false }) { Text("‹ 连接") }
-                    Text("电脑 Harness", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                    Surface(
-                        modifier = Modifier.size(9.dp),
-                        shape = RoundedCornerShape(99.dp),
-                        color = if (state.remoteConnected) Color(0xFF34C759) else Color(0xFFFF9500),
-                    ) {}
-                }
-            }
-            if (entryUrl == null) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("请先扫码连接电脑") }
-            } else {
-                HarnessWebView(entryUrl, Modifier.fillMaxSize())
-            }
-        }
+    if (state.remoteSessionId != null) {
+        RemoteConversation(state, viewModel)
         return
     }
 
+    if (state.remoteConnected) {
+        RemoteSessionList(state, viewModel, onScan = { scanner.launch(scanOptions) })
+    } else {
+        PairingScreen(state, viewModel, onScan = { scanner.launch(scanOptions) })
+    }
+}
+
+@Composable
+private fun PairingScreen(state: AppUiState, viewModel: MainViewModel, onScan: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.secondaryContainer,
+            shape = RoundedCornerShape(26.dp),
+            color = Color(0xFFEAF2FF),
         ) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                androidx.compose.foundation.Image(
+            Column(
+                Modifier.padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                Image(
                     painter = painterResource(R.drawable.pixel_whale),
                     contentDescription = "像素小鲸鱼",
                     modifier = Modifier.fillMaxWidth().height(170.dp),
                     contentScale = ContentScale.Fit,
                 )
-                Text("扫码直连电脑", fontSize = 22.sp, style = MaterialTheme.typography.titleLarge)
-                Text("手机和电脑连入同一 Wi-Fi，扫描桥接器显示的二维码即可配对。项目、会话、Shell 和 Git 仍在你的电脑上运行。")
-                Text("令牌只加密保存在本机，HTTP 配对仅允许局域网地址。", style = MaterialTheme.typography.bodySmall)
+                Text("直接控制电脑 Harness", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+                Text("二维码由 DeepSeek Harness 内的移动配对插件生成。手机连接后直接读取电脑会话和发送编程任务，不加载电脑网页。")
+                Text("项目、Shell、Git、Skills 和模型仍在你的电脑上运行。", style = MaterialTheme.typography.bodySmall)
             }
         }
 
         Button(
-            onClick = { scanner.launch(scanOptions) },
+            onClick = onScan,
             modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(16.dp),
-        ) { Text("扫描电脑二维码") }
+            enabled = !state.remoteBusy,
+        ) { Text(if (state.remoteBusy) "正在配对…" else "扫描 Harness 二维码") }
 
-        Text("手动连接", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("也可以输入配对码", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = state.remoteBaseUrl,
                     onValueChange = viewModel::updateRemoteBaseUrl,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("桥接器地址") },
-                    supportingText = { Text("例如：http://192.168.1.20:3081") },
+                    label = { Text("电脑 Harness 地址") },
+                    supportingText = { Text("例如：http://192.168.1.20:43117") },
                     singleLine = true,
                     shape = RoundedCornerShape(14.dp),
                 )
                 OutlinedTextField(
-                    value = state.remoteToken,
-                    onValueChange = viewModel::updateRemoteToken,
+                    value = state.remotePairCode,
+                    onValueChange = viewModel::updateRemotePairCode,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text(if (state.remoteConfigured) "配对令牌（留空保持不变）" else "配对令牌") },
+                    label = { Text("8 位一次性配对码") },
                     singleLine = true,
                     shape = RoundedCornerShape(14.dp),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(onClick = viewModel::saveAndTestRemote, enabled = !state.remoteBusy) {
-                        Text(if (state.remoteBusy) "连接中…" else "保存并测试")
+                        Text(if (state.remoteBusy) "连接中…" else "配对并连接")
                     }
                     if (state.remoteConfigured) {
-                        OutlinedButton(onClick = viewModel::disconnectRemote) { Text("断开") }
+                        OutlinedButton(onClick = viewModel::testRemote, enabled = !state.remoteBusy) { Text("重试") }
                     }
                 }
             }
         }
 
-        if (state.remoteConfigured) {
-            Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface) {
-                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            modifier = Modifier.size(10.dp),
-                            shape = RoundedCornerShape(99.dp),
-                            color = if (state.remoteConnected) Color(0xFF34C759) else Color(0xFFFF9500),
-                        ) {}
-                        Text(
-                            if (state.remoteConnected) "  电脑 Harness 已就绪" else "  已配对，等待连接测试",
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                    }
-                    Text(state.remoteBaseUrl, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedButton(onClick = viewModel::testRemote, enabled = !state.remoteBusy) { Text("重新测试") }
-                        Button(onClick = { showsComputer = true }, enabled = state.remoteConnected) { Text("打开电脑 Harness") }
-                    }
-                }
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
         Text(
-            "局域网版不需要 Tailscale，但离开当前 Wi-Fi 就会断开。不要把 3081 端口直接暴露到公网。",
+            "局域网直连不需要 Tailscale。二维码不包含 DeepSeek API Key，只包含电脑地址和短期一次性配对码。",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
     }
 }
 
-@SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun HarnessWebView(entryUrl: String, modifier: Modifier = Modifier) {
-    val allowedHost = remember(entryUrl) { entryUrl.toUri().host }
-    AndroidView(
-        modifier = modifier,
-        factory = { context ->
-            WebView(context).apply {
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.allowFileAccess = false
-                settings.allowContentAccess = false
-                settings.mediaPlaybackRequiresUserGesture = true
-                settings.userAgentString = "${settings.userAgentString} WhaleHarnessAndroid/0.2.1"
-                CookieManager.getInstance().setAcceptCookie(true)
-                webViewClient = object : WebViewClient() {
-                    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                        return request.url.host != allowedHost
-                    }
-
-                    override fun onPageFinished(view: WebView, url: String) {
-                        view.evaluateJavascript(MOBILE_ADAPTATION_SCRIPT, null)
-                    }
-                }
-                loadUrl(entryUrl)
+private fun RemoteSessionList(state: AppUiState, viewModel: MainViewModel, onScan: () -> Unit) {
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("电脑项目与会话", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(state.remoteBaseUrl, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-        },
-        update = { webView ->
-            if (webView.url == null) webView.loadUrl(entryUrl)
-        },
-    )
+            Surface(Modifier.size(10.dp), RoundedCornerShape(99.dp), color = Color(0xFF34C759)) {}
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Button(onClick = viewModel::createRemoteSession, enabled = !state.remoteBusy) { Text("＋ 新会话") }
+            OutlinedButton(onClick = viewModel::refreshRemoteSessions, enabled = !state.remoteBusy) { Text("刷新") }
+            TextButton(onClick = onScan, enabled = !state.remoteBusy) { Text("重新配对") }
+        }
+        if (state.remoteBusy) {
+            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                Text("  正在读取电脑 Harness…")
+            }
+        }
+        if (state.remoteSessions.isEmpty() && !state.remoteBusy) {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text("电脑上还没有可显示的会话", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(state.remoteSessions, key = { it.id }) { session ->
+                    SessionRow(session, onClick = { viewModel.openRemoteSession(session.id) })
+                }
+            }
+        }
+        TextButton(
+            onClick = viewModel::disconnectRemote,
+            modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp),
+        ) { Text("断开这台电脑") }
+    }
 }
 
-private const val MOBILE_ADAPTATION_SCRIPT = """
-(() => {
-  if (!document.querySelector('meta[name="viewport"]')) {
-    const viewport = document.createElement('meta');
-    viewport.name = 'viewport';
-    viewport.content = 'width=device-width, initial-scale=1, viewport-fit=cover';
-    document.head.appendChild(viewport);
-  }
-  if (!document.getElementById('whale-harness-mobile-style')) {
-    const style = document.createElement('style');
-    style.id = 'whale-harness-mobile-style';
-    style.textContent = `
-      html, body, #root { width: 100%; max-width: 100vw; min-height: 100%; overflow-x: hidden; }
-      input, textarea, select, button { font-size: 16px !important; }
-      pre, code { white-space: pre-wrap !important; overflow-wrap: anywhere; }
-      @media (max-width: 700px) {
-        [role="dialog"] { max-width: calc(100vw - 24px) !important; max-height: calc(100vh - 24px) !important; }
-        aside, [data-sidebar] { max-width: 88vw !important; }
-      }
-    `;
-    document.head.appendChild(style);
-  }
-})();
-"""
+@Composable
+private fun SessionRow(session: RemoteSession, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 2.dp,
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                modifier = Modifier.size(42.dp),
+                shape = RoundedCornerShape(13.dp),
+                color = Color(0xFFE7F0FF),
+            ) { Box(contentAlignment = Alignment.Center) { Text("⌘", color = Color(0xFF1565E8), fontWeight = FontWeight.Bold) } }
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                Text(session.title, fontWeight = FontWeight.Bold)
+                Text(
+                    session.cwd ?: DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(session.updatedAt)),
+                    maxLines = 1,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(if (session.running) "运行中" else "›", color = if (session.running) Color(0xFF1565E8) else MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun RemoteConversation(state: AppUiState, viewModel: MainViewModel) {
+    BackHandler(onBack = viewModel::closeRemoteSession)
+    val selected = state.remoteSessions.firstOrNull { it.id == state.remoteSessionId }
+    Column(Modifier.fillMaxSize().imePadding()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = viewModel::closeRemoteSession) { Text("‹ 项目") }
+            Column(Modifier.weight(1f)) {
+                Text(selected?.title ?: "电脑会话", fontWeight = FontWeight.Bold)
+                Text("直接运行于电脑 Harness", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            TextButton(onClick = viewModel::refreshRemoteHistory) { Text("刷新") }
+        }
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            items(state.remoteMessages, key = { it.id }) { RemoteMessageBubble(it) }
+            if (state.remoteBusy) item { Text("电脑 Harness 正在执行…", color = Color(0xFF1565E8)) }
+        }
+        Surface(
+            modifier = Modifier.padding(12.dp),
+            shape = RoundedCornerShape(22.dp),
+            shadowElevation = 8.dp,
+        ) {
+            Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                OutlinedTextField(
+                    value = state.remoteDraft,
+                    onValueChange = viewModel::updateRemoteDraft,
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("给电脑 Harness 一个编程任务…") },
+                    minLines = 2,
+                    maxLines = 5,
+                    shape = RoundedCornerShape(15.dp),
+                )
+                Button(
+                    onClick = viewModel::sendRemote,
+                    enabled = state.remoteDraft.isNotBlank() && !state.remoteBusy,
+                    modifier = Modifier.align(Alignment.End).padding(top = 8.dp),
+                ) { Text("发送到电脑") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RemoteMessageBubble(message: ChatMessage) {
+    val user = message.role == Role.USER
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (user) Arrangement.End else Arrangement.Start) {
+        Surface(
+            modifier = Modifier.widthIn(max = 330.dp),
+            shape = RoundedCornerShape(18.dp),
+            color = if (user) Color(0xFF1565E8) else MaterialTheme.colorScheme.surfaceVariant,
+        ) {
+            Text(
+                message.content,
+                modifier = Modifier.padding(14.dp),
+                color = if (user) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}

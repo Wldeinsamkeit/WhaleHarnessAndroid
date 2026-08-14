@@ -1,0 +1,6 @@
+- insert:
+    - id: whale-mobile-companion
+      name: whale-harness-mobile-companion
+      config:
+        host: 0.0.0.0
+        port: 43117

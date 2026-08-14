@@ -2,7 +2,6 @@ package org.whaleharness.android.data
 
 import java.net.URI
 import java.net.URLDecoder
-import java.net.URLEncoder
 import java.util.UUID
 
 data class ApiConfig(
@@ -15,34 +14,40 @@ data class RemoteHarnessConfig(
     val baseUrl: String,
     val token: String,
 ) {
-    fun healthUrl(): String = "${baseUrl.trimEnd('/')}/__open_harness_mobile/health"
+    fun healthUrl(): String = "${baseUrl.trimEnd('/')}/v1/health"
+}
 
-    fun entryUrl(): String = "${baseUrl.trimEnd('/')}/?token=${URLEncoder.encode(token, Charsets.UTF_8.name())}"
+data class RemotePairingRequest(
+    val baseUrl: String,
+    val code: String,
+) {
+    fun pairingUrl(): String = "${baseUrl.trimEnd('/')}/v1/pair"
 
     companion object {
-        fun fromPairingCode(payload: String): RemoteHarnessConfig {
+        fun fromPayload(payload: String): RemotePairingRequest {
             val uri = URI(payload.trim())
-            require(uri.scheme == "http" || uri.scheme == "https") { "二维码不是 HTTP/HTTPS 配对地址" }
-            require(!uri.host.isNullOrBlank() && uri.userInfo == null) { "这不是有效的小鲸鱼配对二维码" }
-            val token = uri.rawQuery.orEmpty().split('&')
-                .mapNotNull { item ->
-                    val parts = item.split('=', limit = 2)
-                    if (parts.firstOrNull() == "token") parts.getOrNull(1) else null
-                }
-                .firstOrNull()
-                ?.let { URLDecoder.decode(it, Charsets.UTF_8.name()) }
-                .orEmpty()
-            require(token.isNotBlank()) { "配对二维码缺少令牌" }
-            require(uri.scheme == "https" || isTrustedLocalHost(uri.host)) {
-                "HTTP 桥接器只允许局域网、.local 或 Tailscale 地址"
-            }
-            val base = URI(uri.scheme, null, uri.host, uri.port, null, null, null).toString()
-            return RemoteHarnessConfig(baseUrl = base, token = token)
+            require(uri.scheme == "whaleharness" && uri.host == "pair") { "这不是 DeepSeek Harness 移动配对二维码" }
+            val parameters = uri.rawQuery.orEmpty().split('&').mapNotNull { item ->
+                val parts = item.split('=', limit = 2)
+                val key = parts.firstOrNull() ?: return@mapNotNull null
+                key to URLDecoder.decode(parts.getOrNull(1).orEmpty(), Charsets.UTF_8.name())
+            }.toMap()
+            return fromManualEntry(
+                baseUrl = parameters["endpoint"].orEmpty(),
+                code = parameters["code"].orEmpty(),
+            )
         }
 
-        fun fromManualEntry(baseUrl: String, token: String): RemoteHarnessConfig {
-            val separator = if (baseUrl.contains('?')) "&" else "?"
-            return fromPairingCode("${baseUrl.trim()}${separator}token=${URLEncoder.encode(token.trim(), Charsets.UTF_8.name())}")
+        fun fromManualEntry(baseUrl: String, code: String): RemotePairingRequest {
+            val uri = URI(baseUrl.trim().trimEnd('/'))
+            require(uri.scheme == "http" || uri.scheme == "https") { "电脑地址必须是 HTTP 或 HTTPS" }
+            require(!uri.host.isNullOrBlank() && uri.userInfo == null) { "电脑地址无效" }
+            require(code.trim().matches(Regex("\\d{8}"))) { "请输入电脑 Harness 显示的 8 位配对码" }
+            require(uri.scheme == "https" || isTrustedLocalHost(uri.host)) {
+                "HTTP 直连只允许局域网、.local 或 Tailscale 地址"
+            }
+            val base = URI(uri.scheme, null, uri.host, uri.port, null, null, null).toString()
+            return RemotePairingRequest(baseUrl = base, code = code.trim())
         }
 
         private fun isTrustedLocalHost(host: String): Boolean {
@@ -59,6 +64,14 @@ data class RemoteHarnessConfig(
         }
     }
 }
+
+data class RemoteSession(
+    val id: String,
+    val title: String,
+    val cwd: String?,
+    val updatedAt: Long,
+    val running: Boolean,
+)
 
 data class Skill(
     val id: String = UUID.randomUUID().toString(),

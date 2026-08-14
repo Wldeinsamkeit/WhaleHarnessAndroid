@@ -41,7 +41,7 @@ class AppRepository(context: Context) {
         val encryptedToken = preferences.getString("remote_token", null) ?: return null
         val token = remoteTokenStore.decrypt(encryptedToken)
         if (baseUrl.isBlank() || token.isBlank()) return null
-        return runCatching { RemoteHarnessConfig.fromManualEntry(baseUrl, token) }.getOrNull()
+        return RemoteHarnessConfig(baseUrl = baseUrl, token = token)
     }
 
     fun saveRemoteConfig(config: RemoteHarnessConfig) {

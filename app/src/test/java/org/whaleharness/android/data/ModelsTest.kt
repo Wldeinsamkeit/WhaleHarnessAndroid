@@ -54,41 +54,45 @@ class ModelsTest {
     }
 
     @Test
-    fun pairingCodeExtractsLocalBridgeAndToken() {
-        val config = RemoteHarnessConfig.fromPairingCode(
-            "http://192.168.1.20:3081/?token=pair%20token",
+    fun pairingQrExtractsHarnessEndpointAndOneTimeCode() {
+        val request = RemotePairingRequest.fromPayload(
+            "whaleharness://pair?endpoint=http%3A%2F%2F192.168.1.20%3A43117&code=12345678&v=1",
         )
-        assertEquals("http://192.168.1.20:3081", config.baseUrl)
-        assertEquals("pair token", config.token)
-        assertEquals(
-            "http://192.168.1.20:3081/?token=pair+token",
-            config.entryUrl(),
-        )
+        assertEquals("http://192.168.1.20:43117", request.baseUrl)
+        assertEquals("12345678", request.code)
+        assertEquals("http://192.168.1.20:43117/v1/pair", request.pairingUrl())
     }
 
     @Test
-    fun pairingCodeAcceptsLocalHostnameAndTailscaleAddress() {
+    fun manualPairingAcceptsLocalHostnameAndTailscaleAddress() {
         assertEquals(
-            "http://my-mac.local:3081",
-            RemoteHarnessConfig.fromPairingCode("http://my-mac.local:3081/?token=test").baseUrl,
+            "http://my-mac.local:43117",
+            RemotePairingRequest.fromManualEntry("http://my-mac.local:43117", "12345678").baseUrl,
         )
         assertEquals(
-            "http://100.64.1.8:3081",
-            RemoteHarnessConfig.fromPairingCode("http://100.64.1.8:3081/?token=test").baseUrl,
+            "http://100.64.1.8:43117",
+            RemotePairingRequest.fromManualEntry("http://100.64.1.8:43117", "12345678").baseUrl,
         )
     }
 
     @Test
     fun pairingCodeRejectsPublicCleartextAddress() {
         assertThrows(IllegalArgumentException::class.java) {
-            RemoteHarnessConfig.fromPairingCode("http://example.com:3081/?token=test")
+            RemotePairingRequest.fromManualEntry("http://example.com:43117", "12345678")
         }
     }
 
     @Test
-    fun pairingCodeRequiresToken() {
+    fun pairingCodeRequiresEightDigits() {
         assertThrows(IllegalArgumentException::class.java) {
-            RemoteHarnessConfig.fromPairingCode("http://192.168.1.20:3081/")
+            RemotePairingRequest.fromManualEntry("http://192.168.1.20:43117", "1234")
+        }
+    }
+
+    @Test
+    fun pairingQrRejectsOldBridgeUrl() {
+        assertThrows(IllegalArgumentException::class.java) {
+            RemotePairingRequest.fromPayload("http://192.168.1.20:3081/?token=legacy")
         }
     }
 }
