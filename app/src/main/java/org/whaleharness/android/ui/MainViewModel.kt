@@ -36,6 +36,7 @@ data class AppUiState(
     val remoteConfigured: Boolean = false,
     val remoteConnected: Boolean = false,
     val remoteBusy: Boolean = false,
+    val remoteScanRequest: Int = 0,
     val notice: String? = null,
 )
 
@@ -62,6 +63,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun updateRemoteBaseUrl(value: String) = _state.update { it.copy(remoteBaseUrl = value) }
     fun updateRemoteToken(value: String) = _state.update { it.copy(remoteToken = value) }
     fun clearNotice() = _state.update { it.copy(notice = null) }
+
+    fun openRemoteScanner() = _state.update {
+        it.copy(tab = AppTab.REMOTE, remoteScanRequest = it.remoteScanRequest + 1)
+    }
+
+    fun consumeRemoteScanRequest() = _state.update { it.copy(remoteScanRequest = 0) }
 
     fun pairRemote(payload: String) {
         runCatching {

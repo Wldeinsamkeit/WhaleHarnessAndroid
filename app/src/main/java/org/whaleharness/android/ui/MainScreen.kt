@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,16 +26,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -46,6 +45,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -54,7 +54,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -82,19 +86,31 @@ fun WhaleHarnessApp(viewModel: MainViewModel = viewModel()) {
         }
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+    Box(
+        modifier = Modifier.fillMaxSize().background(
+            Brush.verticalGradient(
+                listOf(
+                    MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.52f),
+                    MaterialTheme.colorScheme.background,
+                    MaterialTheme.colorScheme.background,
+                ),
+            ),
+        ),
+    ) {
+      Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
                     if (state.tab == AppTab.CHAT) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             androidx.compose.foundation.Image(
-                                painter = painterResource(R.drawable.ic_launcher_foreground),
+                                painter = painterResource(R.drawable.pixel_whale),
                                 contentDescription = null,
-                                modifier = Modifier.size(36.dp),
+                                modifier = Modifier.size(42.dp),
+                                contentScale = ContentScale.Fit,
                             )
-                            Text("小鲸鱼", fontWeight = FontWeight.Bold)
+                            Text("小鲸鱼", fontWeight = FontWeight.ExtraBold)
                         }
                     } else {
                         Text(
@@ -115,18 +131,26 @@ fun WhaleHarnessApp(viewModel: MainViewModel = viewModel()) {
                 actions = {
                     if (state.tab == AppTab.CHAT) {
                         TextButton(onClick = { viewModel.selectTab(AppTab.SETTINGS) }) {
-                            Text(if (state.config.apiKey.isBlank()) "● 配置 API" else "● ${state.config.model}")
+                            Surface(
+                                shape = CircleShape,
+                                color = if (state.remoteConnected) Color(0xFFDCFCE7) else MaterialTheme.colorScheme.surface,
+                            ) {
+                                Text(
+                                    if (state.remoteConnected) "● 电脑已连接" else "设置",
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    color = if (state.remoteConnected) Color(0xFF138A46) else MaterialTheme.colorScheme.primary,
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                            }
                         }
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             )
         },
         bottomBar = {
             if (state.tab != AppTab.SKILLS && state.tab != AppTab.REMOTE) {
-                NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                    TabItem(R.drawable.ic_chat, "小鲸鱼", AppTab.CHAT, state.tab, viewModel::selectTab)
-                    TabItem(R.drawable.ic_settings, "设置", AppTab.SETTINGS, state.tab, viewModel::selectTab)
-                }
+                BottomDock(state.tab, viewModel::selectTab)
             }
         },
         snackbarHost = { SnackbarHost(snackbarHost) },
@@ -139,23 +163,56 @@ fun WhaleHarnessApp(viewModel: MainViewModel = viewModel()) {
                 AppTab.REMOTE -> RemoteHarnessScreen(state, viewModel)
             }
         }
+      }
     }
 }
 
 @Composable
-private fun RowScope.TabItem(
+private fun BottomDock(selected: AppTab, onSelect: (AppTab) -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp).shadow(14.dp, RoundedCornerShape(28.dp)),
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+    ) {
+        Row(Modifier.fillMaxWidth().padding(6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            DockItem(R.drawable.ic_chat, "小鲸鱼", AppTab.CHAT, selected, onSelect, Modifier.weight(1f))
+            DockItem(R.drawable.ic_settings, "设置", AppTab.SETTINGS, selected, onSelect, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun DockItem(
     icon: Int,
     label: String,
     tab: AppTab,
     selected: AppTab,
     onSelect: (AppTab) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    NavigationBarItem(
-        selected = selected == tab,
-        onClick = { onSelect(tab) },
-        icon = { Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(24.dp)) },
-        label = { Text(label) },
-    )
+    val isSelected = selected == tab
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(22.dp))
+            .background(if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+            .clickable { onSelect(tab) }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            painterResource(icon),
+            contentDescription = null,
+            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(22.dp),
+        )
+        Spacer(Modifier.size(8.dp))
+        Text(
+            label,
+            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+        )
+    }
 }
 
 @Composable
@@ -173,24 +230,54 @@ private fun ChatScreen(state: AppUiState, viewModel: MainViewModel) {
     Column(Modifier.fillMaxSize().imePadding()) {
         if (state.messages.isEmpty()) {
             Column(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
+                modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Surface(
-                    modifier = Modifier.size(116.dp),
-                    shape = RoundedCornerShape(32.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer,
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(32.dp))
+                        .background(
+                            Brush.linearGradient(
+                                listOf(Color(0xFF052C8F), Color(0xFF075EF2), Color(0xFF19C8F4)),
+                            ),
+                        )
+                        .padding(horizontal = 22.dp, vertical = 20.dp),
                 ) {
-                    androidx.compose.foundation.Image(
-                        painter = painterResource(R.drawable.ic_launcher_foreground),
-                        contentDescription = "小鲸鱼",
-                        modifier = Modifier.fillMaxSize().padding(8.dp),
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        androidx.compose.foundation.Image(
+                            painter = painterResource(R.drawable.pixel_whale),
+                            contentDescription = "像素小鲸鱼",
+                            modifier = Modifier.fillMaxWidth().height(210.dp),
+                            contentScale = ContentScale.Fit,
+                        )
+                        Text("你的电脑 AI，现在也能装进手机", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "扫码连接 DeepSeek Harness，项目和工具仍在你的电脑上运行。",
+                            color = Color.White.copy(alpha = 0.82f),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Button(
+                            onClick = {
+                                if (state.remoteConfigured) viewModel.selectTab(AppTab.REMOTE) else viewModel.openRemoteScanner()
+                            },
+                            modifier = Modifier.fillMaxWidth().height(50.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color(0xFF0754DC)),
+                        ) {
+                            Text(if (state.remoteConfigured) "进入电脑 Harness" else "扫码连接电脑", fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
-                Spacer(Modifier.height(12.dp))
-                Text("今天想让小鲸鱼做什么？", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("配置自己的 API、Skill 和文件", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(14.dp))
+                OutlinedButton(
+                    onClick = { viewModel.selectTab(AppTab.SETTINGS) },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(16.dp),
+                ) { Text("或者配置手机本地 API") }
             }
         } else {
             LazyColumn(
@@ -207,7 +294,8 @@ private fun ChatScreen(state: AppUiState, viewModel: MainViewModel) {
         Surface(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             shape = RoundedCornerShape(24.dp),
-            tonalElevation = 4.dp,
+            shadowElevation = 8.dp,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
         ) {
             Column(Modifier.fillMaxWidth().padding(12.dp)) {
                 if (state.attachments.isNotEmpty()) {
@@ -369,6 +457,58 @@ private fun SettingsScreen(state: AppUiState, viewModel: MainViewModel) {
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        Text("电脑连接", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(Brush.linearGradient(listOf(Color(0xFF062A86), Color(0xFF0867F2), Color(0xFF22CAE9))))
+                .padding(18.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.White.copy(alpha = 0.16f),
+                    ) {
+                        Text(
+                            if (state.remoteConnected) "● 已连接" else if (state.remoteConfigured) "● 已配对" else "○ 未连接",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                    Text("电脑 Harness", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+                    Text(
+                        if (state.remoteConfigured) state.remoteBaseUrl else "扫一次码，直接控制项目和会话",
+                        color = Color.White.copy(alpha = 0.82f),
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                    )
+                }
+                androidx.compose.foundation.Image(
+                    painter = painterResource(R.drawable.pixel_whale),
+                    contentDescription = null,
+                    modifier = Modifier.size(116.dp),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+        }
+        Button(
+            onClick = {
+                if (state.remoteConfigured) viewModel.selectTab(AppTab.REMOTE) else viewModel.openRemoteScanner()
+            },
+            modifier = Modifier.fillMaxWidth().height(50.dp),
+            shape = RoundedCornerShape(16.dp),
+        ) {
+            Text(if (state.remoteConfigured) "打开电脑 Harness" else "扫码连接电脑", fontWeight = FontWeight.Bold)
+        }
+        TextButton(
+            onClick = { viewModel.selectTab(AppTab.REMOTE) },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("手动输入电脑地址和令牌") }
+
+        Spacer(Modifier.height(6.dp))
         Text("模型", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -457,31 +597,6 @@ private fun SettingsScreen(state: AppUiState, viewModel: MainViewModel) {
             }
         }
 
-        Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface) {
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable { viewModel.selectTab(AppTab.REMOTE) }.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Surface(
-                    modifier = Modifier.size(42.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                ) {
-                    Box(contentAlignment = Alignment.Center) { Text("💻", fontSize = 20.sp) }
-                }
-                Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text("电脑 Harness", fontWeight = FontWeight.SemiBold)
-                    Text(
-                        if (state.remoteConfigured) "已配对 · ${state.remoteBaseUrl}" else "扫码直连 · 局域网控制",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                    )
-                }
-                Text("›", fontSize = 28.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-
         Spacer(Modifier.height(8.dp))
         Text("安全与本地", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface) {
@@ -494,7 +609,7 @@ private fun SettingsScreen(state: AppUiState, viewModel: MainViewModel) {
             }
         }
         Text(
-            "小鲸鱼 Android 0.2.0 · MIT 开源试用版",
+            "小鲸鱼 Android 0.2.1 · MIT 开源试用版",
             modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,

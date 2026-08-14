@@ -11,18 +11,22 @@ private val DarkColorScheme = darkColorScheme(
   primary = DarkWhaleBlue,
   background = DarkBackground,
   surface = DarkSurface,
-  surfaceVariant = Color(0xFF2C2C2E),
-  secondaryContainer = Color(0xFF183B66),
+  surfaceVariant = Color(0xFF172448),
+  secondaryContainer = Color(0xFF102D61),
+  onBackground = Color(0xFFF4F7FF),
+  onSurface = Color(0xFFF4F7FF),
+  onSurfaceVariant = Color(0xFFB7C6E8),
 )
 
 private val LightColorScheme = lightColorScheme(
   primary = WhaleBlue,
   background = GroupedBackground,
   surface = GroupedSurface,
-  surfaceVariant = Color(0xFFE9EBEF),
+  surfaceVariant = Color(0xFFE8EFFB),
   secondaryContainer = WhaleBlueLight,
-  onBackground = Color(0xFF111111),
-  onSurface = Color(0xFF111111),
+  onBackground = Color(0xFF0A1633),
+  onSurface = Color(0xFF0A1633),
+  onSurfaceVariant = Color(0xFF63708A),
 )
 
 @Composable

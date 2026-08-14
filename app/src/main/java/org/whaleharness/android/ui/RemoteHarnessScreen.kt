@@ -29,25 +29,47 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.google.zxing.client.android.Intents
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import org.whaleharness.android.R
 
 @Composable
 internal fun RemoteHarnessScreen(state: AppUiState, viewModel: MainViewModel) {
     var showsComputer by remember { mutableStateOf(false) }
     val scanner = rememberLauncherForActivityResult(ScanContract()) { result ->
         result.contents?.let(viewModel::pairRemote)
+    }
+    val scanOptions = remember {
+        ScanOptions()
+            .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+            .setPrompt("对准电脑上的小鲸鱼配对码")
+            .setBeepEnabled(false)
+            .setOrientationLocked(false)
+            .addExtra(Intents.Scan.SCAN_TYPE, Intents.Scan.MIXED_SCAN)
+    }
+
+    LaunchedEffect(state.remoteScanRequest) {
+        if (state.remoteScanRequest > 0) {
+            viewModel.consumeRemoteScanRequest()
+            scanner.launch(scanOptions)
+        }
+    }
+    LaunchedEffect(state.remoteConnected) {
+        if (state.remoteConnected) showsComputer = true
     }
 
     if (showsComputer) {
@@ -87,23 +109,20 @@ internal fun RemoteHarnessScreen(state: AppUiState, viewModel: MainViewModel) {
             color = MaterialTheme.colorScheme.secondaryContainer,
         ) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                Text("💻  扫码直连电脑", fontSize = 22.sp, style = MaterialTheme.typography.titleLarge)
+                androidx.compose.foundation.Image(
+                    painter = painterResource(R.drawable.pixel_whale),
+                    contentDescription = "像素小鲸鱼",
+                    modifier = Modifier.fillMaxWidth().height(170.dp),
+                    contentScale = ContentScale.Fit,
+                )
+                Text("扫码直连电脑", fontSize = 22.sp, style = MaterialTheme.typography.titleLarge)
                 Text("手机和电脑连入同一 Wi-Fi，扫描桥接器显示的二维码即可配对。项目、会话、Shell 和 Git 仍在你的电脑上运行。")
                 Text("令牌只加密保存在本机，HTTP 配对仅允许局域网地址。", style = MaterialTheme.typography.bodySmall)
             }
         }
 
         Button(
-            onClick = {
-                scanner.launch(
-                    ScanOptions()
-                        .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                        .setPrompt("对准电脑上的小鲸鱼配对码")
-                        .setBeepEnabled(false)
-                        .setOrientationLocked(false)
-                        .addExtra(Intents.Scan.SCAN_TYPE, Intents.Scan.MIXED_SCAN),
-                )
-            },
+            onClick = { scanner.launch(scanOptions) },
             modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(16.dp),
         ) { Text("扫描电脑二维码") }
@@ -184,7 +203,7 @@ private fun HarnessWebView(entryUrl: String, modifier: Modifier = Modifier) {
                 settings.allowFileAccess = false
                 settings.allowContentAccess = false
                 settings.mediaPlaybackRequiresUserGesture = true
-                settings.userAgentString = "${settings.userAgentString} WhaleHarnessAndroid/0.2"
+                settings.userAgentString = "${settings.userAgentString} WhaleHarnessAndroid/0.2.1"
                 CookieManager.getInstance().setAcceptCookie(true)
                 webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
