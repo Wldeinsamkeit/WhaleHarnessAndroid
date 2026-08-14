@@ -7,6 +7,7 @@ import java.io.ByteArrayOutputStream
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +33,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -54,12 +56,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import org.whaleharness.android.R
 import org.whaleharness.android.data.ChatMessage
 import org.whaleharness.android.data.LocalAttachment
 import org.whaleharness.android.data.Role
@@ -79,21 +83,43 @@ fun WhaleHarnessApp(viewModel: MainViewModel = viewModel()) {
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("🐳", fontSize = 25.sp)
-                        Text(" 小鲸鱼", fontWeight = FontWeight.Bold)
+                    if (state.tab == AppTab.CHAT) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.foundation.Image(
+                                painter = painterResource(R.drawable.ic_launcher_foreground),
+                                contentDescription = null,
+                                modifier = Modifier.size(36.dp),
+                            )
+                            Text("小鲸鱼", fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        Text(if (state.tab == AppTab.SKILLS) "Skills" else "设置", fontWeight = FontWeight.Bold)
+                    }
+                },
+                navigationIcon = {
+                    if (state.tab == AppTab.SKILLS) {
+                        TextButton(onClick = { viewModel.selectTab(AppTab.SETTINGS) }) { Text("‹ 设置") }
+                    }
+                },
+                actions = {
+                    if (state.tab == AppTab.CHAT) {
+                        TextButton(onClick = { viewModel.selectTab(AppTab.SETTINGS) }) {
+                            Text(if (state.config.apiKey.isBlank()) "● 配置 API" else "● ${state.config.model}")
+                        }
                     }
                 },
             )
         },
         bottomBar = {
-            NavigationBar {
-                TabItem("💬", "对话", AppTab.CHAT, state.tab, viewModel::selectTab)
-                TabItem("✨", "Skills", AppTab.SKILLS, state.tab, viewModel::selectTab)
-                TabItem("⚙️", "设置", AppTab.SETTINGS, state.tab, viewModel::selectTab)
+            if (state.tab != AppTab.SKILLS) {
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                    TabItem(R.drawable.ic_chat, "小鲸鱼", AppTab.CHAT, state.tab, viewModel::selectTab)
+                    TabItem(R.drawable.ic_settings, "设置", AppTab.SETTINGS, state.tab, viewModel::selectTab)
+                }
             }
         },
         snackbarHost = { SnackbarHost(snackbarHost) },
@@ -110,7 +136,7 @@ fun WhaleHarnessApp(viewModel: MainViewModel = viewModel()) {
 
 @Composable
 private fun RowScope.TabItem(
-    icon: String,
+    icon: Int,
     label: String,
     tab: AppTab,
     selected: AppTab,
@@ -119,7 +145,7 @@ private fun RowScope.TabItem(
     NavigationBarItem(
         selected = selected == tab,
         onClick = { onSelect(tab) },
-        icon = { Text(icon, fontSize = 20.sp) },
+        icon = { Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(24.dp)) },
         label = { Text(label) },
     )
 }
@@ -143,7 +169,17 @@ private fun ChatScreen(state: AppUiState, viewModel: MainViewModel) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Text("🐳", fontSize = 84.sp)
+                Surface(
+                    modifier = Modifier.size(116.dp),
+                    shape = RoundedCornerShape(32.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    androidx.compose.foundation.Image(
+                        painter = painterResource(R.drawable.ic_launcher_foreground),
+                        contentDescription = "小鲸鱼",
+                        modifier = Modifier.fillMaxSize().padding(8.dp),
+                    )
+                }
                 Spacer(Modifier.height(12.dp))
                 Text("今天想让小鲸鱼做什么？", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text("配置自己的 API、Skill 和文件", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -160,7 +196,11 @@ private fun ChatScreen(state: AppUiState, viewModel: MainViewModel) {
             }
         }
 
-        Surface(tonalElevation = 4.dp) {
+        Surface(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            shape = RoundedCornerShape(24.dp),
+            tonalElevation = 4.dp,
+        ) {
             Column(Modifier.fillMaxWidth().padding(12.dp)) {
                 if (state.attachments.isNotEmpty()) {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -318,47 +358,114 @@ private fun SkillEditor(skill: Skill, onDismiss: () -> Unit, onSave: (Skill) -> 
 @Composable
 private fun SettingsScreen(state: AppUiState, viewModel: MainViewModel) {
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text("模型 API", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text(
-            "支持 DeepSeek、OpenAI 及兼容 /chat/completions 的 HTTPS 服务。API Key 使用 Android Keystore 加密保存。",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        OutlinedTextField(
-            value = state.config.baseUrl,
-            onValueChange = viewModel::updateBaseUrl,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("API 基础地址") },
-            supportingText = { Text("例如：https://api.deepseek.com") },
-            singleLine = true,
-        )
-        OutlinedTextField(
-            value = state.config.model,
-            onValueChange = viewModel::updateModel,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("模型名称") },
-            singleLine = true,
-        )
-        OutlinedTextField(
-            value = state.config.apiKey,
-            onValueChange = viewModel::updateApiKey,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("API Key") },
-            visualTransformation = PasswordVisualTransformation(),
-            singleLine = true,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedButton(onClick = { viewModel.saveConfiguration() }, enabled = !state.isBusy) { Text("保存") }
-            Button(onClick = viewModel::testConnection, enabled = !state.isBusy) {
-                Text(if (state.isBusy) "测试中…" else "测试连接")
+        Text("模型", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        modifier = Modifier.size(42.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                    ) {
+                        Box(contentAlignment = Alignment.Center) { Text("🔑", fontSize = 20.sp) }
+                    }
+                    Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                        Text("配置 API", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            if (state.config.apiKey.isBlank()) "尚未配置" else state.config.model,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Text(if (state.config.apiKey.isBlank()) "●" else "●", color = if (state.config.apiKey.isBlank()) Color(0xFFFF9500) else Color(0xFF34C759))
+                }
+                OutlinedTextField(
+                    value = state.config.baseUrl,
+                    onValueChange = viewModel::updateBaseUrl,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("API 基础地址") },
+                    supportingText = { Text("例如：https://api.deepseek.com") },
+                    shape = RoundedCornerShape(14.dp),
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = state.config.model,
+                    onValueChange = viewModel::updateModel,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("模型名称") },
+                    shape = RoundedCornerShape(14.dp),
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = state.config.apiKey,
+                    onValueChange = viewModel::updateApiKey,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("API Key") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    shape = RoundedCornerShape(14.dp),
+                    singleLine = true,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(onClick = { viewModel.saveConfiguration() }, enabled = !state.isBusy) { Text("保存") }
+                    Button(onClick = viewModel::testConnection, enabled = !state.isBusy) {
+                        Text(if (state.isBusy) "测试中…" else "测试连接")
+                    }
+                }
             }
         }
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-        Text("本地能力", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Text("• 最多同时附加 5 个文本文件\n• 单个文件最多读取 200 KB\n• 不申请整个存储空间权限\n• 当前不包含电脑桥接、Shell 或 Git")
-        Text("版本 0.1.0 · 开源试用版", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            "支持 DeepSeek、OpenAI 及兼容 /chat/completions 的 HTTPS 服务。API Key 使用 Android Keystore 加密保存。",
+            modifier = Modifier.padding(horizontal = 4.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+
+        Spacer(Modifier.height(8.dp))
+        Text("扩展", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface) {
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { viewModel.selectTab(AppTab.SKILLS) }.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(
+                    modifier = Modifier.size(42.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    Box(contentAlignment = Alignment.Center) { Text("✨", fontSize = 20.sp) }
+                }
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text("Skills", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "${state.skills.count { it.enabled }} 个已启用 · 可导入和编辑",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Text("›", fontSize = 28.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Text("安全与本地", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Text("文件权限", fontWeight = FontWeight.SemiBold)
+                Text("只读取你明确选择的文件，最多 5 个，每个 200 KB。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                HorizontalDivider(Modifier.padding(vertical = 12.dp))
+                Text("运行边界", fontWeight = FontWeight.SemiBold)
+                Text("当前不包含电脑桥接、Shell 或 Git。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Text(
+            "小鲸鱼 Android 0.1.0 · MIT 开源试用版",
+            modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 

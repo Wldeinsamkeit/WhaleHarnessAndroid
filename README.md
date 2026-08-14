@@ -14,6 +14,10 @@
 
 ## 安装 APK
 
+手机扫描下方二维码会打开最新 GitHub Release：
+
+![扫码下载小鲸鱼 Android](download-qr.png)
+
 1. 把 `WhaleHarness-v0.1.0-debug.apk` 传到安卓手机。
 2. 点击 APK；如果系统提示，允许当前文件管理器“安装未知应用”。
 3. 安装后打开“小鲸鱼”。
